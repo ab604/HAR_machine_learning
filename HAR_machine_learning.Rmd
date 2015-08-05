@@ -1,0 +1,63 @@
+---
+title: "HAR machine learning project"
+author: "A.Bailey"
+date: "Tuesday, August 04, 2015"
+output: 
+ html_document:
+        author: "A.Bailey"
+        fig_caption: yes
+        fig_width: 9
+        keep_md: yes
+
+---
+Get the data
+```{r setoptions, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(cache=TRUE,echo=TRUE,cache=TRUE, message=FALSE, 
+                      warning=FALSE, fig=TRUE,eval=TRUE,
+                      fig.width=9,fig.lp='fig:')
+# Set working directory
+knitr::opts_knit$set(root.dir="C:/Users/ab604/OneDrive/Coursera/machine_learning/HAR_machine_learning")
+# Load citation package
+library(knitcitations)
+options("citation_format" = "pandoc")
+cleanbib()
+# Load ggplot
+library(ggplot2)
+library(dplyr)
+library(reshape2)
+library(car)
+library(pander)
+```
+
+```{r,get-data}
+# Download URL for training data
+trainUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+
+testUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+# Download training data if not already downloaded
+if(!file.exists("pml-training.csv")){
+        download.file(trainUrl,destfile="pml-training.csv")
+        dateDownloaded <- date()
+        # Create logfile
+        log_con <- file("pml-training_download.log")
+        cat (trainUrl,"\n","destfile= pml-training.csv",
+             "\n","destdir =", getwd(),"\n",dateDownloaded, 
+             file = log_con)
+        close(log_con)
+}
+
+# Download test data if not already downloaded
+if(!file.exists("pml-testing.csv")){
+        download.file(testUrl,destfile="pml-testing.csv")
+        dateDownloaded <- date()
+        # Create logfile
+        log_con <- file("pml-testing_download.log")
+        cat (testUrl,"\n","destfile= pml-testing.csv",
+             "\n","destdir =", getwd(),"\n",dateDownloaded, 
+             file = log_con)
+        close(log_con)
+}
+
+```
