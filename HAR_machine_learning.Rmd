@@ -1,0 +1,227 @@
+---
+title: "HAR machine learning project"
+author: "A.Bailey"
+date: "Tuesday, August 04, 2015"
+bibliography: "references.bib"
+output:
+  html_document:
+    author: A.Bailey
+    fig_caption: yes
+    fig_width: 9
+    keep_md: yes
+    toc: yes  
+---
+Get the data
+```{r setoptions, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(cache=TRUE,echo=TRUE,cache=TRUE, message=FALSE, 
+                      warning=FALSE, fig=TRUE,eval=TRUE,
+                      fig.width=8,fig.lp='fig:')
+# Set working directory
+knitr::opts_knit$set(root.dir="C:/Users/ab604/OneDrive/Coursera/machine_learning/HAR_machine_learning")
+# Load citation package
+library(knitcitations)
+cleanbib()
+options("citation_format" = "pandoc")
+# Load ggplot
+library(caret)
+library(randomForest)
+library(MASS)
+library(ggplot2)
+library(Hmisc)
+library(AppliedPredictiveModeling)
+transparentTheme(trans = .4)
+library(pander)
+```
+# Executive summary
+This report using the dataset [Human Activity Recognition Weight Lifting Exercises Dataset](http://groupware.les.inf.puc-rio.br/har) and Caret package
+`r citet("https://cran.r-project.org/web/packages/caret/index.html")` and
+Caret paper.
+
+# Introduction
+
+# Obtaining the data, loading and tidying
+
+```{r,get-data}
+# Download URL for training data
+trainUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+
+testUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+# Download training data if not already downloaded
+if(!file.exists("pml-training.csv")){
+        download.file(trainUrl,destfile="pml-training.csv")
+        dateDownloaded <- date()
+        # Create logfile
+        log_con <- file("pml-training_download.log")
+        cat (trainUrl,"\n","destfile= pml-training.csv",
+             "\n","destdir =", getwd(),"\n",dateDownloaded, 
+             file = log_con)
+        close(log_con)
+}
+
+# Download test data if not already downloaded
+if(!file.exists("pml-testing.csv")){
+        download.file(testUrl,destfile="pml-testing.csv")
+        dateDownloaded <- date()
+        # Create logfile
+        log_con <- file("pml-testing_download.log")
+        cat (testUrl,"\n","destfile= pml-testing.csv",
+             "\n","destdir =", getwd(),"\n",dateDownloaded, 
+             file = log_con)
+        close(log_con)
+}
+```
+
+Having had a look at the download files I can see that the NA strings need to be set
+for ` NA, #DIV0` and empty cells when the data is read in:
+
+```{r,read_data}
+# Load training and test data
+pml.training <- read.csv("pml-training.csv",header = TRUE,
+                         na.strings = c('NA','#DIV/0!',''))
+pml.testing <- read.csv("pml-testing.csv",header = TRUE,
+                        na.strings = c('NA','#DIV/0!',''))
+```
+
+I chose a simple strategy to tidy the data of just removing all columns with 
+`NAs` to begin with from both the training and test date. As this resulted in 
+a good model, I didn't have cause to revise this strategy.
+
+Having removed the `NAs`, I also removed the metadata columns 1 to 7 from both
+datasets. Inspection of the training data indicated that the `classe` variable
+that we wish to predict for the test set is in the final column of the training
+set.
+
+```{r,tidy_data}
+# Remove all NAs
+train.tdy <- pml.training[sapply(pml.training, function(x) !any(is.na(x)))] 
+test.tdy <-  pml.testing[sapply(pml.testing, function(x) !any(is.na(x)))]
+
+# Remove metadata from training and test set
+train.tdy <- train.tdy[,-c(1:7)]
+test.tdy <-  test.tdy[,-c(1:7)]
+```
+
+# Splitting the data and preprocessing
+
+```{r, preproc}
+# Split data for cross validation and training, 60% training set, 
+# 40% cross validation set
+inTrain <- createDataPartition(train.tdy$classe, p = 0.6, list=FALSE)
+# train to tune models, cv to evaluate model performance
+train <- train.tdy[inTrain,]
+cv  <- train.tdy[-inTrain,]
+
+# Find highly correlated variables in training set
+descrCorr <- cor(train[,-53], use="complete") 
+highCorr <- findCorrelation(descrCorr, 0.9)
+
+# Remove highly correlated variables from training, cv and test data
+train.c <- train[, -highCorr]
+cv.c <- cv[, -highCorr]
+test.c <- test.tdy[,-highCorr]
+```
+
+# Exploring the training set
+
+To
+
+```{r, explore_data, fig.width=10, fig.height=10, fig.cap="**Figure 1:** Pairs plot"}
+# Create pairs plot of five selected variables
+plot.1 <- featurePlot(x=train.c[,c(2,3,10,34,40)], y = train.c$classe, 
+                      plot="pairs",
+                      ## Add a key at the top
+                      auto.key = list(columns = 5))
+plot.1
+```
+
+# Create and tune some models
+
+```{r, set-control}
+# Set training control for 5 fold cross validation with two repeats
+cvCtl <- trainControl(method = "cv", number = 5, repeats = 2)
+```
+
+```{r, train-models}
+# CART model, set tuneLength to evaluate broader set of models that defualt of 3
+rpartTune <- train(classe~., data=train.c, method = "rpart", tuneLength = 30,
+                  trControl =cvCtl)                                        
+# Quadratic discriminant model
+qdaTune <- train(classe~., data=train.c, method = "qda", tuneLength = 30,
+                trControl =cvCtl)    
+# Random forest model
+rfTune <- train(classe~., data=train.c, method = "rf",
+                 trControl =cvCtl) 
+```
+
+# Evaluate models with cross validation set
+```{r, evaluation, fig.cap="**Figure 2:** Dot plot"}
+# Cross validate CART model using cv portion of training
+train.rp <- predict(rpartTune, newdata = cv.c, type= "raw")
+confus.rp <- confusionMatrix(cv$classe,train.rp,dnn = c("CV", "Training"))
+
+# Cross validate QDA model using cv portion of training
+train.q <- predict(qdaTune, newdata = cv.c,type="raw")
+confus.q <- confusionMatrix(cv$classe,train.q,dnn = c("CV", "Training"))
+
+# Cross validate random forest model using cv portion of training
+train.rf <- predict(rfTune, newdata = cv.c, type= "raw")
+confus.rf <- confusionMatrix(cv$classe,train.rf,dnn = c("CV", "Training"))
+
+# Confusion matrix for CART model
+confus.rp$table
+# Confusion matrix for QDA model
+confus.q$table
+# Confusion matrix for random forest model
+confus.rf$table
+
+# Compare model performance using resampling results
+cvValues <- resamples(list(CART = rpartTune, QDA = qdaTune, 
+                           RandomForest=rfTune))
+
+# Plot comparison of model performance
+dotplot(cvValues)
+
+# Calculate accuracy and out of sample error
+err.rp <- c(confus.rp$overall[1], 1 -confus.rp$overall[1])
+err.q <- c(confus.q$overall[1],1 -confus.q$overall[1])
+err.rf <- c(confus.rf$overall[1],1 -confus.rf$overall[1])
+
+# Create a table of accuracy and out of sample error
+err.table <- round(rbind(err.rp,err.q,err.rf),2)
+rownames(err.table) <- c("CART","QDA","Random Forest")
+colnames(err.table) <- c("Accuracy","Out of sample error")
+kable(err.table)
+```
+
+# Predict test set
+```{r,predict-test}
+test.pred <- predict(rfTune, newdata = test.c, type= "raw")
+
+test.pred
+
+# write output
+pml_write_files = function(x){
+                 n = length(x)
+                 for(i in 1:n){
+                         filename = paste0("problem_id_",i,".txt")
+                         write.table(x[i],file=filename,quote=FALSE,
+                                     row.names=FALSE,col.names=FALSE)
+                 }
+         }
+
+pml_write_files(test.pred)
+```
+
+# Session information
+Here is the session information about the packages I used, their versions, and 
+the version of R that I used for this assignment:
+```{r session_info,echo=FALSE}
+print(sessionInfo(),locale = FALSE)
+```
+
+# References
+```{r,references,echo=FALSE}
+write.bibtex(file="references.bib")
+```
