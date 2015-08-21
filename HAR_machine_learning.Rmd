@@ -1,24 +1,23 @@
 ---
 title: "HAR machine learning project"
 author: "A.Bailey"
-date: "Tuesday, August 04, 2015"
-bibliography: "references.bib"
+date: "Friday, August 21st, 2015"
 output:
   html_document:
     author: A.Bailey
     fig_caption: yes
     fig_width: 9
     keep_md: yes
-    toc: yes  
+    toc: yes 
+bibliography: "references.bib"
 ---
-Get the data
 ```{r setoptions, include=FALSE}
 library(knitr)
 knitr::opts_chunk$set(cache=TRUE,echo=TRUE,cache=TRUE, message=FALSE, 
                       warning=FALSE, fig=TRUE,eval=TRUE,
                       fig.width=8,fig.lp='fig:')
 # Set working directory
-knitr::opts_knit$set(root.dir="C:/Users/ab604/OneDrive/Coursera/machine_learning/HAR_machine_learning")
+knitr::opts_knit$set(root.dir="C:/local/SkyDrive/Coursera/machine_learning/HAR_machine_learning")
 # Load citation package
 library(knitcitations)
 cleanbib()
@@ -34,14 +33,54 @@ transparentTheme(trans = .4)
 library(pander)
 ```
 # Executive summary
-This report using the dataset [Human Activity Recognition Weight Lifting Exercises Dataset](http://groupware.les.inf.puc-rio.br/har) and Caret package
-`r citet("https://cran.r-project.org/web/packages/caret/index.html")` and
-Caret paper.
+This report documents my attempts to use machine learning to predict the manner 
+of a dumbbell exercise performed in a test data set using a training set using
+data from the [Human Activity Recognition Weight Lifting Exercises Dataset](http://groupware.les.inf.puc-rio.br/har) [@Velloso2013]. Machine learning
+was performed in R using the Caret package
+`r citet("https://cran.r-project.org/web/packages/caret/index.html")` [@Kuhn2008].
+I adopted a simple strategy for feature selection: remove variables with `NA` and
+that are highly correlated with the others. This left 46 features from which to 
+build and compare three model types: a Classification and regression tree (CART) 
+model, a Quadratic Discriminant Analysis (QDA) model and a Random Forest model. 
+I used 5-fold cross validation with 2 repeats to tune the models. The Random 
+Forest model performed best (99% accurate with a 0.01 out of sample error) 
+in predicting the cross validation set, but was the slowest to run. 
+I therefore used the Random Forest model to predict the manner of the dumbbell 
+exercise in the test set.
 
 # Introduction
 
-# Obtaining the data, loading and tidying
+The goal of this project was to use machine learning to predict the manner 
+of a dumbbell curl exercise performed in a test data set using a training set using
+data from the [Human Activity Recognition Weight Lifting Exercises Dataset](http://groupware.les.inf.puc-rio.br/har) [@Velloso2013].
 
+In the report by [@Velloso2013] they describe collecting data using sensors
+as positioned in Figure 1 such that: 
+
+*"Participants were asked to perform one set of 10 repetitions
+of the Unilateral Dumbbell Biceps Curl in five different fashions:
+exactly according to the specification (Class A), throwing
+the elbows to the front (Class B), lifting the dumbbell
+only halfway (Class C), lowering the dumbbell only halfway
+(Class D) and throwing the hips to the front (Class E). Class
+A corresponds to the specified execution of the exercise,
+while the other 4 classes correspond to common mistakes."*
+
+
+
+![**Figure 1**  Sensing set-up figure reproduced from [@Velloso2013]](HAR_machine_learning_files/figure-html/paper_fig.png)
+
+This yielded sensor observations with a large set of features from which they used 17
+to predict the manner in which the dumbbell exercise was performed, the `classe`
+feature.
+
+Here I use a training set containing the same set of features in [@Velloso2013] 
+to build a model using machine learning methods in `R` to predict the `classe` 
+of dumbbell exercise preformed in a test set of sensor observations. 
+
+# Obtaining, loading and tidying the data
+
+The following code will download the training and test data, and create a log file.
 ```{r,get-data}
 # Download URL for training data
 trainUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
@@ -73,8 +112,8 @@ if(!file.exists("pml-testing.csv")){
 }
 ```
 
-Having had a look at the download files I can see that the NA strings need to be set
-for ` NA, #DIV0` and empty cells when the data is read in:
+Having had a look at the downloaded files I can see that the NA strings need to be set
+for ` NA, #DIV0` and empty cells when the data is read into `R`:
 
 ```{r,read_data}
 # Load training and test data
@@ -84,6 +123,7 @@ pml.testing <- read.csv("pml-testing.csv",header = TRUE,
                         na.strings = c('NA','#DIV/0!',''))
 ```
 
+As an initial feature selection step,
 I chose a simple strategy to tidy the data of just removing all columns with 
 `NAs` to begin with from both the training and test date. As this resulted in 
 a good model, I didn't have cause to revise this strategy.
@@ -91,7 +131,13 @@ a good model, I didn't have cause to revise this strategy.
 Having removed the `NAs`, I also removed the metadata columns 1 to 7 from both
 datasets. Inspection of the training data indicated that the `classe` variable
 that we wish to predict for the test set is in the final column of the training
-set.
+set. This indicates the manner of the dumbbell exercise as described in the 
+introduction.
+
+Also from inspection, I removed the 7 metadata columns as these aren't predictive
+variables.
+
+These steps were applied to both training and test data.
 
 ```{r,tidy_data}
 # Remove all NAs
@@ -103,7 +149,19 @@ train.tdy <- train.tdy[,-c(1:7)]
 test.tdy <-  test.tdy[,-c(1:7)]
 ```
 
-# Splitting the data and preprocessing
+# Splitting the data and further preprocessing
+
+The rest of the report uses the Caret package to build, train, tune and evaluate
+the model `r citet("https://cran.r-project.org/web/packages/caret/index.html")` [@Kuhn2008].
+
+I split the training data into model training and model cross validation
+sets, 60% for training and 40% for cross validation.
+
+Having checked that there were no near zero variance variables remaining, I 
+filtered the remaining variables by identifying and removing any that are
+highly correlated (>0.9).
+
+These steps were applied to the training, cross validation and test sets:
 
 ```{r, preproc}
 # Split data for cross validation and training, 60% training set, 
@@ -123,11 +181,18 @@ cv.c <- cv[, -highCorr]
 test.c <- test.tdy[,-highCorr]
 ```
 
+This left `r dim(train.c)[2]` features to use to build the models.
+
 # Exploring the training set
 
-To
+From building the models, it became clear that an accurate model could be built
+without more in-depth feature selection. However to illustrate how I would look in 
+more detail to refine the selection of variables Figure 2 shows a pairs plot for
+5 *"interesting"* looking features. For example, there is some  separation
+by `classe` for `yaw_belt` plotted against `pitch_forearm`.
 
-```{r, explore_data, fig.width=10, fig.height=10, fig.cap="**Figure 1:** Pairs plot"}
+
+```{r, explore_data, fig.width=10, fig.height=10, fig.cap="**Figure 2:** Pairs plot of five features in training set"}
 # Create pairs plot of five selected variables
 plot.1 <- featurePlot(x=train.c[,c(2,3,10,34,40)], y = train.c$classe, 
                       plot="pairs",
@@ -136,27 +201,47 @@ plot.1 <- featurePlot(x=train.c[,c(2,3,10,34,40)], y = train.c$classe,
 plot.1
 ```
 
-# Create and tune some models
+# Creating and tuning three models
+
+To create and tune the models, I first set training control method to be
+5 fold cross validation with 2 repeats. I chose a small number of folds and two 
+repeats for speed as discussed in [@James2013]. As this led to an accurate model 
+I didn't have recourse to revise it.
 
 ```{r, set-control}
 # Set training control for 5 fold cross validation with two repeats
 cvCtl <- trainControl(method = "cv", number = 5, repeats = 2)
 ```
 
+I chose to build three types of model: a Classification and regression tree (CART) 
+model, a Quadratic Discriminant Analysis (QDA) model and a Random Forest model.
+These were chosen to compare their speed and accuracy following the 
+examples detailed in [@Kuhn2008]. The strategy being to find the balance between
+speed and performance. I set the seed for each train call so that the models can
+be compared later.
+
 ```{r, train-models}
 # CART model, set tuneLength to evaluate broader set of models that defualt of 3
+set.seed(1972)
 rpartTune <- train(classe~., data=train.c, method = "rpart", tuneLength = 30,
                   trControl =cvCtl)                                        
 # Quadratic discriminant model
+set.seed(1972)
 qdaTune <- train(classe~., data=train.c, method = "qda", tuneLength = 30,
                 trControl =cvCtl)    
 # Random forest model
+set.seed(1972)
 rfTune <- train(classe~., data=train.c, method = "rf",
                  trControl =cvCtl) 
 ```
 
-# Evaluate models with cross validation set
-```{r, evaluation, fig.cap="**Figure 2:** Dot plot"}
+# Evaluating the models with the cross validation set
+
+To evaluate the models performance I used the 40% of the training set put
+aside to predict the `classe` variables. The confusion matrices indicate
+how well the models did with these predictions:
+
+```{r, evaluation}
 # Cross validate CART model using cv portion of training
 train.rp <- predict(rpartTune, newdata = cv.c, type= "raw")
 confus.rp <- confusionMatrix(cv$classe,train.rp,dnn = c("CV", "Training"))
@@ -175,8 +260,14 @@ confus.rp$table
 confus.q$table
 # Confusion matrix for random forest model
 confus.rf$table
+```
 
-# Compare model performance using resampling results
+Confirming what is shown in the confusion Figure 3 indicates that the Random Forest is 
+the best performing model with 99% accuracy, quantified along with the out of sample 
+error in Table 1.
+
+```{r, evaluation_2, fig.cap="**Figure 3:** Dot plot of model performance"}
+# Compare model performance using resampling results, seed set same at train
 cvValues <- resamples(list(CART = rpartTune, QDA = qdaTune, 
                            RandomForest=rfTune))
 
@@ -195,8 +286,32 @@ colnames(err.table) <- c("Accuracy","Out of sample error")
 kable(err.table)
 ```
 
-# Predict test set
-```{r,predict-test}
+**Table 1:** Model accuracy and out of sample error
+
+As a check on feature selection, Table 2 shows the top 10 most important 
+variables in the Random Forest Model. 
+
+```{r,var-imp}
+# Find feature importance for random forest model
+vi <- varImp(rfTune)$importance
+o <- order(vi$Overall, decreasing = TRUE)
+vio <- vi[o,,drop = FALSE] 
+kable(round(head(vio,10),2))
+
+```
+
+**Table 2:** Top 10 most important features in the Random Forest Model
+
+Comparing Table 2 with the Figure 1 pairs plot
+shows that `yaw_belt` and `pitch_forearm` are important to predict `classe`. 
+The full table could be used to reduce the number of features required to build 
+an accurate model and thus speed up performance. However, as I have an accurate
+model I chose to stop at this point and predict the test set.
+
+# Predicting the test set
+
+This is the code to produce the project submission files:
+```{r,predict-test, eval=FALSE}
 test.pred <- predict(rfTune, newdata = test.c, type= "raw")
 
 test.pred
@@ -214,14 +329,25 @@ pml_write_files = function(x){
 pml_write_files(test.pred)
 ```
 
+# Conclusions
+
+The Random Forest model performed best, it was 99% accurate with a 0.01 out of 
+sample error in predicting the cross validation set, but was the slowest to run. 
+I therefore used the Random Forest model to predict the manner of the dumbbell 
+exercise in the test set. However, more careful selection of the features could be
+used to attempt to train a model that is of similar accuracy, but is faster.
+
 # Session information
+
 Here is the session information about the packages I used, their versions, and 
 the version of R that I used for this assignment:
+
 ```{r session_info,echo=FALSE}
-print(sessionInfo(),locale = FALSE)
+sessionInfo()
 ```
 
 # References
+
 ```{r,references,echo=FALSE}
 write.bibtex(file="references.bib")
 ```
