@@ -68,7 +68,7 @@ while the other 4 classes correspond to common mistakes."*
 
 
 
-![**Figure 1**  Sensing set-up figure reproduced from [@Velloso2013]](HAR_machine_learning_files/figure-html/paper_fig.png)
+![**Figure 1:**  Sensing set-up figure reproduced from [@Velloso2013]](HAR_machine_learning_files/figure-html/paper_fig.png)
 
 This yielded sensor observations with a large set of features from which they used 17
 to predict the manner in which the dumbbell exercise was performed, the `classe`
@@ -314,8 +314,6 @@ This is the code to produce the project submission files:
 ```{r,predict-test, eval=FALSE}
 test.pred <- predict(rfTune, newdata = test.c, type= "raw")
 
-test.pred
-
 # write output
 pml_write_files = function(x){
                  n = length(x)
@@ -328,6 +326,13 @@ pml_write_files = function(x){
 
 pml_write_files(test.pred)
 ```
+
+```{r,predict-test2,,echo=FALSE}
+test.pred <- predict(rfTune, newdata = test.c, type= "raw")
+```
+
+The predictions for the `classe` of the 20 test set dumbbell exercises 
+are: `r test.pred`
 
 # Conclusions
 
